@@ -41,7 +41,8 @@ try:
             run(*prefix, 'ip', 'addr', 'add', f'{network}.{suffix}/24', 'dev', 'peer0')
         run(*prefix, 'ip', 'link', 'set', 'peer0', 'up')
         run(*prefix, 'ip', 'route', 'add', 'default', 'via', network + '.1')
-        run(*prefix, 'ip', 'route', 'add', '224.0.0.0/4', 'dev', 'peer0')
+        # Отделяем multicast от кэша next hop обычного клиентского трафика.
+        run(*prefix, 'ip', 'route', 'add', '224.0.0.0/4', 'dev', 'peer0', 'metric', '100')
     run('nft', '-f', '-', data='\n'.join(policies.values()))
 
     def probe(sender, source, destination, port, receiver, expected, label):

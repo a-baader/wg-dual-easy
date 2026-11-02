@@ -149,7 +149,10 @@ async function request(host, portNumber, allow) {
     await run('ip', ['route', 'add', 'default', 'via', underlay.gateway, 'dev', underlay.dev, 'table', '100']);
     await run('ip', ['rule', 'add', 'fwmark', '51820', 'table', '100', 'priority', '100']);
     await run(binary, ['set', 'peer0', 'fwmark', '51820']);
-    for (const subnet of ['0.0.0.0/1', '128.0.0.0/1', '224.0.0.0/4']) await run('ip', ['route', 'add', subnet, 'dev', 'peer0']);
+    for (const subnet of ['0.0.0.0/1', '128.0.0.0/1']) await run('ip', ['route', 'add', subnet, 'dev', 'peer0']);
+    // Разные метрики разделяют кэш next hop: multicast не должен менять тип
+    // результата маршрутизации unicast и вызывать ENETUNREACH у TCP connect.
+    await run('ip', ['route', 'add', '224.0.0.0/4', 'dev', 'peer0', 'metric', '100']);
     if (own6) for (const subnet of ['2000::/3', 'fc00::/7']) await run('ip', ['-6', 'route', 'add', subnet, 'dev', 'peer0']);
     echo();
     for (const udpPort of [5353, 1900]) {
