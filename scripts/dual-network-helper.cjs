@@ -29,6 +29,16 @@ async function request(host, portNumber, allow) {
     assert(allow, 'Запрещённый трафик доставлен');
     if (![51821, 51825].includes(portNumber)) assert(received.equals(payload));
   } catch (error) {
+    if (allow && process.env.DUAL_STRACE_CONNECT === '1') {
+      const details = { pid: process.pid, error: { code: error.code, errno: error.errno,
+        syscall: error.syscall, address: error.address, port: error.port } };
+      try {
+        details.netns = await fs.readlink('/proc/self/ns/net');
+        details.route = (await run('ip', ['-j', host.includes(':') ? '-6' : '-4', 'route', 'get', host])).stdout;
+      } catch (diagnosticError) { details.diagnosticError = diagnosticError.message; }
+      await fs.writeFile('/tmp/dual-request-failure.json', JSON.stringify(details), { mode: 0o600 });
+      console.error('Диагностика connect: ' + JSON.stringify(details));
+    }
     if (allow || !['ETIMEDOUT', 'ECONNRESET', 'EHOSTUNREACH', 'ENETUNREACH', 'ECONNREFUSED'].includes(error.code)) throw error;
   }
   console.log('PASS: ' + (allow ? 'разрешено ' : 'запрещено ') + host + ':' + portNumber);

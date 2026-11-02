@@ -161,8 +161,9 @@ jobs:
         env:
           DUAL_DIAGNOSTIC_DIRECTORY: ${{ runner.temp }}/dual-network-diagnostics
           DUAL_CAPTURE_PACKETS: '1'
+          DUAL_STRACE_CONNECT: '1'
         run: |
-          command -v tcpdump >/dev/null || { sudo apt-get update && sudo apt-get install -y tcpdump; }
+          if ! command -v tcpdump >/dev/null || ! command -v strace >/dev/null; then sudo apt-get update && sudo apt-get install -y tcpdump strace; fi
           sudo -E "$(command -v node)" scripts/test-dual-network.cjs vpn-easy-awg:dual-stage7 vpn-easy-wg:dual-stage7
       - name: Проверить зависимости обоих production-образов
         run: python3 scripts/scan-release-images.py vpn-easy-awg:dual-stage7 vpn-easy-wg:dual-stage7

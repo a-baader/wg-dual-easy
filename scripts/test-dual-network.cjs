@@ -16,7 +16,15 @@ const captures = [];
 const capturedNames = new Set();
 const docker = (...args) => execFileSync('docker', args, { encoding: 'utf8', timeout: 120000, stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
-const execute = (name, ...args) => docker('exec', name, 'node', '/test.cjs', ...args);
+let traceSequence = 0;
+const execute = (name, ...args) => {
+  if (process.env.DUAL_STRACE_CONNECT === '1' && args[0] === 'traffic') {
+    return docker('exec', name, '/trace-lib/ld-linux-x86-64.so.2', '--library-path', '/trace-lib',
+      '/trace-bin/strace', '-f', '-e', 'trace=connect,getsockopt,setsockopt,bind,socket', '-s', '0',
+      '-o', '/tmp/dual-connect-' + (++traceSequence) + '.log', 'node', '/test.cjs', ...args);
+  }
+  return docker('exec', name, 'node', '/test.cjs', ...args);
+};
 const anchor = prefix + '-host';
 const redact = value => String(value).replace(/[A-Za-z0-9+/]{43}=/g, '[КЛЮЧ СКРЫТ]');
 async function startPacketCapture(name) {
@@ -72,6 +80,8 @@ function captureDiagnostics() {
       ['rules6', ['exec', name, 'ip', '-j', '-6', 'rule']],
       ['nftables', ['exec', name, 'nft', '-j', 'list', 'ruleset']],
       ['tcp_metrics', ['exec', name, 'ip', 'tcp_metrics', 'show']],
+      ['connect_trace', ['exec', name, 'sh', '-c', 'cat /tmp/dual-connect-*.log 2>/dev/null || true']],
+      ['request_failure', ['exec', name, 'sh', '-c', 'cat /tmp/dual-request-failure.json 2>/dev/null || true']],
     ]) {
       const result = spawnSync('docker', command, { encoding: 'utf8', timeout: 10_000 });
       records[name][label] = redact((result.stdout ?? '') + (result.stderr ?? '')
@@ -97,6 +107,10 @@ function start(name, kind, mode, { shared = false, volume, args = [] } = {}) {
     '--cap-add', 'NET_ADMIN', '--device', '/dev/net/tun', ...settings,
     '--read-only', '--tmpfs', '/run:mode=0700', '--tmpfs', '/tmp:mode=1777',
     '-e', 'VPN_BACKEND=' + (kind === 'wg' ? 'wireguard' : 'amneziawg'),
+    ...(process.env.DUAL_STRACE_CONNECT === '1' ? [
+      '-e', 'DUAL_STRACE_CONNECT=1', '-v', '/usr/bin/strace:/trace-bin/strace:ro',
+      '-v', '/lib/x86_64-linux-gnu:/trace-lib:ro',
+    ] : []),
     ...(volume ? ['-v', volume + ':/data' + (mode === 'client' ? ':ro' : '')] : []),
     '-v', helper + ':/test.cjs:ro', '--entrypoint', 'node', images[kind], '/test.cjs', mode, ...args);
 }
